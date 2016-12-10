@@ -11,16 +11,11 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.PropertyResourceBundle;
 import java.util.ResourceBundle;
-import java.util.logging.Logger;
 
-import org.ansj.app.crf.Model;
-import org.ansj.app.crf.SplitWord;
-import org.ansj.app.crf.model.CRFModel;
 import org.ansj.dic.DicReader;
+import org.ansj.dic.impl.Jdbc2Stream;
 import org.ansj.domain.AnsjItem;
 import org.ansj.library.DATDictionary;
-import org.ansj.library.UserDefineLibrary;
-import org.nlpcn.commons.lang.tire.domain.Forest;
 import org.nlpcn.commons.lang.util.FileFinder;
 import org.nlpcn.commons.lang.util.IOUtil;
 import org.nlpcn.commons.lang.util.ObjConver;
@@ -36,13 +31,7 @@ import org.nlpcn.commons.lang.util.logging.LogFactory;
  */
 public class MyStaticValue {
 
-	public static final Forest EMPTY_FOREST = new Forest();
-
-	public static final Log LIBRARYLOG = getLog();
-
-	public static final String DIC_DEFAULT = "dic";
-
-	public static final String CRF_DEFAULT = "crf";
+	public static final Log LOG = LogFactory.getLog(MyStaticValue.class);
 
 	// 是否开启人名识别
 	public static Boolean isNameRecognition = true;
@@ -56,26 +45,12 @@ public class MyStaticValue {
 	// 是否显示真实词语
 	public static Boolean isRealName = false;
 
-	// 用户自定义词典
-	public static final Map<String, Object> DIC = new HashMap<String, Object>();
-
-	// CRF模型
-	public static final Map<String, Object> CRF = new HashMap<String, Object>();
-
-	/**
-	 * 用户自定义词典的加载,如果是路径就扫描路径下的dic文件
-	 */
-	public static String ambiguityLibrary = "library/ambiguity.dic";
-
-	/**
-	 * 增加同义词词典路径变量
-	 */
-	public static String synonymsLibrary = "library/synonyms.dic";
-
 	/**
 	 * 是否用户辞典不加载相同的词
 	 */
 	public static boolean isSkipUserDefine = false;
+
+	public static final Map<String, String> ENV = new HashMap<>();
 
 	static {
 		/**
@@ -89,10 +64,10 @@ public class MyStaticValue {
 				File find = FileFinder.find("ansj_library.properties", 1);
 				if (find != null && find.isFile()) {
 					rb = new PropertyResourceBundle(IOUtil.getReader(find.getAbsolutePath(), System.getProperty("file.encoding")));
-					LIBRARYLOG.info("load ansj_library not find in classPath ! i find it in " + find.getAbsolutePath() + " make sure it is your config!");
+					LOG.info("load ansj_library not find in classPath ! i find it in " + find.getAbsolutePath() + " make sure it is your config!");
 				}
 			} catch (Exception e1) {
-				LIBRARYLOG.warn("not find ansj_library.properties. and err {} i think it is a bug!", e1);
+				LOG.warn("not find ansj_library.properties. and err {} i think it is a bug!", e1);
 			}
 		}
 
@@ -104,51 +79,30 @@ public class MyStaticValue {
 					File find = FileFinder.find("library.properties", 2);
 					if (find != null && find.isFile()) {
 						rb = new PropertyResourceBundle(IOUtil.getReader(find.getAbsolutePath(), System.getProperty("file.encoding")));
-						LIBRARYLOG.info("load library not find in classPath ! i find it in " + find.getAbsolutePath() + " make sure it is your config!");
+						LOG.info("load library not find in classPath ! i find it in " + find.getAbsolutePath() + " make sure it is your config!");
 					}
 				} catch (Exception e1) {
-					LIBRARYLOG.warn("not find library.properties. and err {} i think it is a bug!", e1);
+					LOG.warn("not find library.properties. and err {} i think it is a bug!", e1);
 				}
 			}
 		}
 
-		DIC.put(DIC_DEFAULT, "library/default.dic");
-
 		if (rb == null) {
-			LIBRARYLOG.warn("not find library.properties in classpath use it by default !");
+			LOG.warn("not find library.properties in classpath use it by default !");
 		} else {
 
 			for (String key : rb.keySet()) {
-
-				if (key.equals("dic")) {
-					DIC.put(key, rb.getString(key));
-				} else if (key.equals("crf")) {
-					CRF.put(key, rb.getString(key));
-				} else if (key.startsWith("dic_")) {
-					if (DIC.containsKey(key)) {
-						LIBRARYLOG.warn(key + "{} dic config repeat definition now overwrite it !");
+				ENV.put(key, rb.getString(key));
+				try {
+					String value = rb.getString(key);
+					if (value.startsWith("jdbc:")) { //给jdbc窜中密码做一个加密,不让密码明文在日志中
+						value = Jdbc2Stream.encryption(value);
 					}
-					DIC.put(key, rb.getString(key));
-				} else if (key.startsWith("crf_")) {
-					if (CRF.containsKey(key)) {
-						LIBRARYLOG.warn(key + " crf config repeat definition now overwrite it !");
-					}
-					CRF.put(key, rb.getString(key));
-				} else {
-					try {
-						Field field = MyStaticValue.class.getField(key);
-						field.set(null, ObjConver.conversion(rb.getString(key), field.getType()));
-					} catch (NoSuchFieldException e) {
-						LIBRARYLOG.error("not find field by " + key);
-					} catch (SecurityException e) {
-						LIBRARYLOG.error("安全异常", e);
-					} catch (IllegalArgumentException e) {
-						LIBRARYLOG.error("非法参数", e);
-					} catch (IllegalAccessException e) {
-						LIBRARYLOG.error("非法访问", e);
-					}
+					LOG.info("init " + key + " to env value is : " + value);
+					Field field = MyStaticValue.class.getField(key);
+					field.set(null, ObjConver.conversion(rb.getString(key), field.getType()));
+				} catch (Exception e) {
 				}
-
 			}
 
 		}
@@ -231,6 +185,15 @@ public class MyStaticValue {
 	 * 
 	 * @return
 	 */
+	public static BufferedReader getNatureClassSuffix() {
+		return DicReader.getReader("nature_class_suffix.txt");
+	}
+
+	/**
+	 * 根据词语后缀判断词性
+	 * 
+	 * @return
+	 */
 	public static BufferedReader getPersonFreqReader() {
 		return DicReader.getReader("person/name_freq.dic");
 	}
@@ -247,9 +210,9 @@ public class MyStaticValue {
 			ObjectInputStream objectInputStream = new ObjectInputStream(inputStream);
 			map = (Map<String, int[][]>) objectInputStream.readObject();
 		} catch (IOException e) {
-			LIBRARYLOG.warn("IO异常", e);
+			LOG.warn("IO异常", e);
 		} catch (ClassNotFoundException e) {
-			LIBRARYLOG.warn("找不到类", e);
+			LOG.warn("找不到类", e);
 		}
 		return map;
 	}
@@ -295,152 +258,18 @@ public class MyStaticValue {
 
 			}
 		} catch (NumberFormatException e) {
-			LIBRARYLOG.warn("数字格式异常", e);
+			LOG.warn("数字格式异常", e);
 		} catch (UnsupportedEncodingException e) {
-			LIBRARYLOG.warn("不支持的编码", e);
+			LOG.warn("不支持的编码", e);
 		} catch (IOException e) {
-			LIBRARYLOG.warn("IO异常", e);
+			LOG.warn("IO异常", e);
 		}
 	}
 
-	/**
-	 * 得到默认的模型
-	 *
-	 * @return
+	/*
+	 * 外部引用为了实例化加载变量
 	 */
-	public static SplitWord getCRFSplitWord() {
-		return getCRFSplitWord(CRF_DEFAULT);
-	}
-
-	/**
-	 * 根据模型名称获取crf模型
-	 * 
-	 * @param key
-	 * @return
-	 */
-	public static SplitWord getCRFSplitWord(String key) {
-		Object temp = CRF.get(key);
-
-		if (temp == null) {
-			if (CRF_DEFAULT.equals(key)) { // 加载内置模型
-				return initDefaultModel();
-			} else {
-				LIBRARYLOG.warn("crf " + key + " not found in config ");
-				return null;
-			}
-		} else if (temp instanceof String) {
-			return initCRFModel(key, (String) temp);
-		} else {
-			return (SplitWord) temp;
-		}
-	}
-
-	/**
-	 * 加载默认的crf模型
-	 * 
-	 * @return
-	 */
-	private static synchronized SplitWord initDefaultModel() {
-
-		Object obj = CRF.get(CRF_DEFAULT);
-		if (obj != null && obj instanceof SplitWord) {
-			return (SplitWord) obj;
-		}
-		try {
-			LIBRARYLOG.info("init deafult crf model begin !");
-			CRFModel model = new CRFModel(CRF_DEFAULT);
-			model.loadModel(DicReader.getInputStream("crf.model"));
-			SplitWord splitWord = new SplitWord(model);
-			CRF.put(CRF_DEFAULT, splitWord);
-			return splitWord;
-		} catch (Exception e) {
-			LIBRARYLOG.error("init err!", e);
-		}
-		return null;
-	}
-
-	/**
-	 * 加载CRF模型
-	 * 
-	 * @param modelPath
-	 * @return
-	 */
-	private static synchronized SplitWord initCRFModel(String key, String modelPath) {
-		try {
-			Object obj = CRF.get(key);
-			if (obj != null && obj instanceof SplitWord) {
-				return (SplitWord) obj;
-			}
-			if (new File(modelPath).isFile() && new File(modelPath).exists()) {
-				long start = System.currentTimeMillis();
-				LIBRARYLOG.info("begin init crf model!");
-				SplitWord crfSplitWord = new SplitWord(Model.load(key, modelPath));
-				CRF.put(key, crfSplitWord);
-				LIBRARYLOG.info("load crf use time:" + (System.currentTimeMillis() - start) + " path is : " + modelPath);
-				return crfSplitWord;
-			} else {
-				LIBRARYLOG.info(key + " file  not found ,please make sure it is exists : " + modelPath);
-			}
-		} catch (Exception e) {
-			LIBRARYLOG.info(key + " file : " + modelPath + " load err " + e.getMessage());
-		}
-		return null;
-	}
-
-	/**
-	 * 得到默认的模型
-	 *
-	 * @return
-	 */
-	public static Forest getDicForest() {
-		return getDicForest(DIC_DEFAULT);
-	}
-
-	/**
-	 * 根据模型名称获取crf模型
-	 * 
-	 * @param modelName
-	 * @return
-	 */
-	public static Forest getDicForest(String key) {
-		Object temp = DIC.get(key);
-
-		if (temp == null) {
-			LIBRARYLOG.warn("dic " + key + " not found in config ");
-			return null;
-		} else if (temp instanceof String) {
-			return initForest(key, (String) temp);
-		} else {
-			return (Forest) temp;
-		}
-	}
-
-	/**
-	 * 用户自定义词典加载
-	 * 
-	 * @param key
-	 * @param dicPath
-	 * @return
-	 */
-	private synchronized static Forest initForest(String key, String dicPath) {
-		Object obj = CRF.get(key);
-
-		if (obj != null && obj instanceof Forest) {
-			return (Forest) obj;
-		}
-		Forest forest = new Forest();
-		UserDefineLibrary.loadLibrary(forest, dicPath);
-		DIC.put(key, forest);
-		return forest;
-	}
-
-	/**
-	 * 获取log默认当前类,不支持android
-	 * 
-	 * @return
-	 */
-	public static Log getLog() {
-		StackTraceElement[] sts = Thread.currentThread().getStackTrace();
-		return LogFactory.getLog(sts[2].getClassName());
+	public static Log getLog(Class<?> clazz) {
+		return LogFactory.getLog(clazz);
 	}
 }

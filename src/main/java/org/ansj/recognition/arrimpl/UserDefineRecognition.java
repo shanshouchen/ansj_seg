@@ -3,7 +3,7 @@ package org.ansj.recognition.arrimpl;
 import org.ansj.domain.Term;
 import org.ansj.domain.TermNature;
 import org.ansj.domain.TermNatures;
-import org.ansj.library.UserDefineLibrary;
+import org.ansj.library.DicLibrary;
 import org.ansj.recognition.TermArrRecognition;
 import org.ansj.util.MyStaticValue;
 import org.ansj.util.TermUtil;
@@ -11,6 +11,7 @@ import org.ansj.util.TermUtil.InsertTermType;
 import org.nlpcn.commons.lang.tire.domain.Forest;
 import org.nlpcn.commons.lang.tire.domain.SmartForest;
 import org.nlpcn.commons.lang.util.logging.Log;
+import org.nlpcn.commons.lang.util.logging.LogFactory;
 
 /**
  * 用户自定义词典.又称补充词典
@@ -20,11 +21,11 @@ import org.nlpcn.commons.lang.util.logging.Log;
  */
 public class UserDefineRecognition implements TermArrRecognition {
 
-	public static final Log logger = MyStaticValue.getLog();
+	public static final Log logger = LogFactory.getLog(UserDefineRecognition.class);
 
 	private Term[] terms = null;
 
-	private Forest[] forests = { UserDefineLibrary.FOREST };
+	private Forest[] forests = { DicLibrary.get() };
 
 	private int offe = -1;
 	private int endOffe = -1;
